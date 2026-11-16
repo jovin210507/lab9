@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Employee Directory (XML to Table)</title>
+  <style>
+    :root {
+      --navy: #1d3557;
+      --blue: #457b9d;
+      --pale: #f1f6fa;
+      --line: #d5e0e8;
+      --text: #22303c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: #e9eff4;
+    }
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 28px 20px;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 6px; font-size: 1.8rem; }
+    header p { margin: 0; color: #bcd3e6; }
+
+    main { max-width: 980px; margin: 28px auto; padding: 0 16px; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .toolbar input[type="search"] {
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      min-width: 240px;
+      font-size: 1rem;
+    }
+    .toolbar label { font-size: 0.95rem; }
+    .toolbar input[type="file"] { font-size: 0.9rem; }
+
+    .table-wrap {
+      overflow-x: auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 14px; text-align: left; white-space: nowrap; }
+    th {
+      background: var(--blue);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { background: var(--navy); }
+    tbody tr:nth-child(even) { background: var(--pale); }
+    tbody tr:hover { background: #dcebf5; }
+    td.num { text-align: right; }
+
+    #status { margin: 12px 2px; font-size: 0.95rem; }
+    #status.error { color: #b3261e; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Employee Directory</h1>
+  <p>Data read from an XML file and shown as a table</p>
+</header>
+
+<main>
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search by name, department, city..." aria-label="Search employees">
+    <label>Load another XML file:
+      <input type="file" id="fileInput" accept=".xml,text/xml,application/xml">
+    </label>
+  </div>
+
+  <div class="table-wrap">
+    <table id="empTable">
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+  <div id="status" role="status"></div>
+</main>
+
+<!-- Sample XML data. This is parsed by the script below. -->
+<script type="application/xml" id="xmlData">
+<?xml version="1.0" encoding="UTF-8"?>
+<employees>
+  <employee>
+    <id>101</id>
+    <name>Asha Rao</name>
+    <department>Engineering</department>
+    <designation>Software Engineer</designation>
+    <city>Bengaluru</city>
+    <salary>85000</salary>
+    <joined>2021-06-14</joined>
+  </employee>
+  <employee>
+    <id>102</id>
+    <name>Rahul Mehta</name>
+    <department>Finance</department>
+    <designation>Accountant</designation>
+    <city>Mumbai</city>
+    <salary>62000</salary>
+    <joined>2019-03-02</joined>
+  </employee>
+  <employee>
+    <id>103</id>
+    <name>Priya Nair</name>
+    <department>Human Resources</department>
+    <designation>HR Manager</designation>
+    <city>Chennai</city>
+    <salary>78000</salary>
+    <joined>2018-11-20</joined>
+  </employee>
+  <employee>
+    <id>104</id>
+    <name>Karan Singh</name>
+    <department>Engineering</department>
+    <designation>Team Lead</designation>
+    <city>Pune</city>
+    <salary>110000</salary>
+    <joined>2016-08-01</joined>
+  </employee>
+  <employee>
+    <id>105</id>
+    <name>Meera Iyer</name>
+    <department>Marketing</department>
+    <designation>Content Strategist</designation>
+    <city>Hyderabad</city>
+    <salary>58000</salary>
+    <joined>2022-01-10</joined>
+  </employee>
+</employees>
+</script>
+
+<script>
+  let employees = [];       // array of {field: value} objects
+  let fields = [];          // column names taken from the XML tags
+  let sortField = null;
+  let sortAsc = true;
+
+  const headRow = document.getElementById("headRow");
+  const body = document.getElementById("body");
+  const statusEl = document.getElementById("status");
+  const searchEl = document.getElementById("search");
+
+  // Turn XML text into an array of employee objects
+  function parseXML(xmlText) {
+    const doc = new DOMParser().parseFromString(xmlText.trim(), "application/xml");
+    if (doc.querySelector("parsererror")) {
+      throw new Error("The file is not valid XML.");
+    }
+    const nodes = doc.getElementsByTagName("employee");
+    if (nodes.length === 0) {
+      throw new Error("No <employee> elements found in the XML.");
+    }
+    const list = [];
+    const names = [];
+    for (const node of nodes) {
+      const row = {};
+      for (const child of node.children) {
+        row[child.tagName] = child.textContent.trim();
+        if (!names.includes(child.tagName)) names.push(child.tagName);
+      }
+      list.push(row);
+    }
+    return { list, names };
+  }
+
+  function label(tag) {
+    return tag.charAt(0).toUpperCase() + tag.slice(1);
+  }
+
+  function renderHead() {
+    headRow.textContent = "";
+    for (const f of fields) {
+      const th = document.createElement("th");
+      const arrow = f === sortField ? (sortAsc ? " ▲" : " ▼") : "";
+      th.textContent = label(f) + arrow;
+      th.title = "Click to sort";
+      th.addEventListener("click", () => sortBy(f));
+      headRow.appendChild(th);
+    }
+  }
+
+  function renderRows() {
+    const q = searchEl.value.trim().toLowerCase();
+    const shown = employees.filter(e =>
+      !q || fields.some(f => (e[f] || "").toLowerCase().includes(q))
+    );
+
+    body.textContent = "";
+    for (const e of shown) {
+      const tr = document.createElement("tr");
+      for (const f of fields) {
+        const td = document.createElement("td");
+        const value = e[f] || "";
+        if (f === "salary" && !isNaN(value)) {
+          td.textContent = "₹" + Number(value).toLocaleString("en-IN");
+          td.className = "num";
+        } else {
+          td.textContent = value;
+        }
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+    statusEl.className = "";
+    statusEl.textContent = `Showing ${shown.length} of ${employees.length} employees.`;
+  }
+
+  function sortBy(f) {
+    sortAsc = sortField === f ? !sortAsc : true;
+    sortField = f;
+    employees.sort((a, b) => {
+      const x = a[f] || "", y = b[f] || "";
+      const result = (!isNaN(x) && !isNaN(y) && x !== "" && y !== "")
+        ? Number(x) - Number(y)
+        : x.localeCompare(y);
+      return sortAsc ? result : -result;
+    });
+    renderHead();
+    renderRows();
+  }
+
+  function load(xmlText) {
+    try {
+      const { list, names } = parseXML(xmlText);
+      employees = list;
+      fields = names;
+      sortField = null;
+      renderHead();
+      renderRows();
+    } catch (err) {
+      statusEl.className = "error";
+      statusEl.textContent = err.message;
+    }
+  }
+
+  // Load the embedded sample XML first
+  load(document.getElementById("xmlData").textContent);
+
+  // Search box
+  searchEl.addEventListener("input", renderRows);
+
+  // Let the user pick their own XML file
+  document.getElementById("fileInput").addEventListener("change", (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => load(reader.result);
+    reader.readAsText(file);
+  });
+</script>
+
+</body>
+</html>
